@@ -10,14 +10,14 @@ CREATE TABLE IF NOT EXISTS 'TMTask' (
 01 'userModificationDate' REAL,
 02 'creationDate' REAL,
 03 'trashed' INTEGER,
-04 'type' INTEGER,        // 0 is a task, 1 is a project
+04 'type' INTEGER,        // 0 is a task, 1 is a project, 2 is a heading
 05 'title' TEXT,
 06 'notes' TEXT,
 07 'dueDate' REAL,
 08 'dueDateOffset' INTEGER,
 09 'status' INTEGER,
 10 'stopDate' REAL,
-11 'start' INTEGER,
+11 'start' INTEGER,       // it seems start = 2 means a "Someday" task
 12 'startDate' REAL,
 13 'index' INTEGER,
 14 'todayIndex' INTEGER,
@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS 'TMTask' (
 21 'instanceCreationPaused' INTEGER,
 22 'instanceCreationCount' INTEGER,
 23 'afterCompletionReferenceDate' REAL ,
-24 'actionGroup' TEXT,
+24 'actionGroup' TEXT,                      // this is a heading uuid
 25 'untrashedLeafActionsCount' INTEGER,
 26 'openUntrashedLeafActionsCount' INTEGER,
 27 'checklistItemsCount' INTEGER,
@@ -40,23 +40,44 @@ CREATE TABLE IF NOT EXISTS 'TMTask' (
 'lastAlarmInteractionDate' REAL,
 'todayIndexReferenceDate' REAL,
 'nextInstanceStartDate' REAL,
-'dueDateSuppressionDate' REAL); */
+'dueDateSuppressionDate' REAL);
 
-case class TmTask(uuid: String, title: String, notes: String, tags: Set[String], project: Option[String], area: Option[String], dueDate: Option[Date])
+Things has kind of a weird model. Areas are different than projects, they can only live at the top level,
+ and projects cannot nest. But when mapped to TP, which can nest projects 2 levels deep (I think...), we can
+ map it pretty well, like:
 
-case class TmProject(uuid: String, title: String, tags: Set[String], area: Option[String])
+ - Task
+ - Task
+ Project:
+  - Task
+  - Task
+  Heading:
+    - Task    (tasks within a heading don't refer to their project, the heading refers to the project)
+ Area:
+  - Task
+  - Task
+  Project:
+    - Task
+    - Task
+*/
+
+
+case class TmProject(uuid: String, title: String, tags: Set[String], area: Option[String], project: Option[String])
 
 object TmProject {
 
   def toProject(line: String, tags: Map[String, Set[TmTag]], areas: Map[String, TmArea]): Option[TmProject] = {
 
-    val parsed = TmTask.parseTask(line, tags, areas)
+    val parsed = TmTask.parseTask(line, areas)
 
     def strOpt(s: String): Option[String] = if (s.trim.isEmpty) None else Some(s)
 
     if (parsed(4) == "1")
       Some(TmProject(uuid = parsed.head, title = parsed(5), tags = tags.getOrElse(parsed.head, Set.empty).map(_.title),
-        area = strOpt(areas.get(parsed(15)).map(_.title).getOrElse(""))))
+        area = strOpt(areas.get(parsed(15)).map(_.title).getOrElse("")), project = None))
+    else if (parsed(4) == "2") // heading
+      Some(TmProject(uuid = parsed.head, title = parsed(5), tags = tags.getOrElse(parsed.head, Set.empty).map(_.title),
+        area = strOpt(areas.get(parsed(15)).map(_.title).getOrElse("")), project = Some(parsed(15))))
     else None
   }
 
@@ -70,9 +91,47 @@ object TmProject {
   }
 }
 
+case class TmTask(uuid: String, title: String, notes: String, tags: Set[String], project: Option[String], area: Option[String], dueDate: Option[Date], someday: Boolean) {
+  def print(level: Int): String = {
+    val allTags: Set[String] = if (someday) tags + "someday" else tags
+    val printed = (" " * level) + "- " + title + " " + allTags.map(t => s"@$t").mkString(" ") + "\n" + formatNote(level + 2)
+    printed.lines.filter(_.trim.nonEmpty).mkString("\n")
+  }
+
+  def indent(str: String, level: Int): String = str.lines.map(line => (" " * level) + line).mkString("\n")
+
+  def formatNote(level: Int): String = {
+    var clean = indent(notes.replaceAll("\\\\n", "\n"), level)
+    for {
+      (from, to) <- TmTask.escapes
+    } clean = clean.replaceAll(from, to)
+
+    while (clean.contains("<a href")) {
+      val start = clean.indexOf("<a href")
+      val end = clean.indexOf("</a>", start)
+      val link = clean.substring(start, end + 4)
+      clean = clean.replaceAllLiterally(link, processLink(link))
+    }
+    clean
+  }
+
+
+  def processLink(str: String): String = {
+    assert(str.startsWith("<a") && str.endsWith("</a>"), s"Malformed anchor: $str")
+    val firstQuote = str.indexOf("\"")
+    assert(firstQuote != -1)
+    val lastQuote = str.lastIndexOf("\"")
+    assert(firstQuote != lastQuote)
+    val href = str.substring(firstQuote + 1, lastQuote)
+    val label = str.substring(lastQuote + 2, str.length - 4)
+    if (href == label) href else s"$label -> $href"
+  }
+}
+
 object TmTask extends JavaTokenParsers {
 
-  def parseTask(line: String, tags: Map[String, Set[TmTag]], areas: Map[String, TmArea]): Seq[String] = {
+  val escapes = Map("&amp;" -> "&", "&apos;" -> "'", "&lt;" -> "<", "&gt;" -> ">", "<note xml:space=\"preserve\">" -> "", "</note>" -> "", "\\\\r" -> "")
+  def parseTask(line: String, areas: Map[String, TmArea]): Seq[String] = {
     // escape any escaped quotes
     val deQuote = line.replaceAll("''", "__QUOTE__")
 
@@ -101,21 +160,26 @@ object TmTask extends JavaTokenParsers {
       ("INSERT INTO TMTask VALUES(" ~> rep1sep(token, ",")) <~ ");"
     }
 
-    parseAll(lineParser, replaced) match {
+    val parsed = parseAll(lineParser, replaced) match {
       case s@Success(_, _) => s.get.asInstanceOf[Seq[String]]
       case f@NoSuccess(msg, _) => sys.error(s"Could not parse: $f")
     }
+
+    parsed.map(_.replaceAll("__QUOTE__", "'"))
   }
 
   def toTask(line: String, tags: Map[String, Set[TmTag]], areas: Map[String, TmArea]): Option[TmTask] = {
 
-    val parsed = parseTask(line, tags, areas)
+    val parsed = parseTask(line, areas)
 
     def strOpt(s: String): Option[String] = if (s.trim.isEmpty) None else Some(s)
 
-    if (parsed(4) == "0")
+    if (parsed(4) == "0" && parsed(3) == "0" && parsed(9) == "0")   // task and not in the trash and status = 0. no idea what status means todo
       Some(TmTask(parsed.head, parsed(5), parsed(6), tags.getOrElse(parsed.head, Set.empty).map(_.title),
-        project = strOpt(parsed(16)), area = strOpt(areas.get(parsed(15)).map(_.title).getOrElse("")), dueDate = None))
+        project = strOpt(parsed(16)).orElse(strOpt(parsed(24))),
+        area = strOpt(areas.get(parsed(15)).map(_.title).getOrElse("")),
+        dueDate = None,   // todo
+        someday = parsed(11) == "2"))
     else None
   }
 
@@ -127,6 +191,7 @@ object TmTask extends JavaTokenParsers {
       toTask(line, tags, areas)
     }).flatten
   }
+
 }
 
 case class TmTag(uuid: String, title: String)
@@ -209,7 +274,11 @@ object SQL extends App with RegexParsers {
 
 
   val areaMap: Map[String, TmArea] = TmArea.areaMap(sql)
-  val tagMap: Map[String, Set[TmTag]] = TmTaskTag.taskToTags(sql, TmTag.tagMap(sql))
-  val tasks = TmTask.taskMap(sql, tagMap, areaMap)
-  tasks.filter(_.tags.nonEmpty).filter(_.project.nonEmpty).foreach(println)
+  val taskToTagMap: Map[String, Set[TmTag]] = TmTaskTag.taskToTags(sql, TmTag.tagMap(sql))
+  val projectMap: Map[String, TmProject] = TmProject.projectMap(sql, taskToTagMap, areaMap)
+  val tasks: Seq[TmTask] = TmTask.taskMap(sql, taskToTagMap, areaMap)
+
+  tasks.filter(_.title.contains("Overcommitted")).foreach(println)
+
+  val topLevelTasks = tasks.filter(_.project.isEmpty).filter(_.area.isEmpty).foreach(task => println(task.print(0)))
 }
