@@ -8,11 +8,11 @@ Utility to generate [TaskPaper](https://www.taskpaper.com/) files from a Things 
  - [x] Project - parsing
  - [x] Notes formatting
  - [x] Headings - parsing
- - [ ] Ordering
+ - [x] Ordering
  - [ ] Checklists
- - [ ] Tasks - printing
- - [ ] Headings - printing
- - [ ] Areas - printing
- - [ ] Projects - printing
+ - [x] Tasks - printing
+ - [x] Headings - printing
+ - [x] Areas - printing
+ - [x] Projects - printing
 
 
