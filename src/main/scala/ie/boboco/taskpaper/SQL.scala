@@ -72,12 +72,17 @@ object TmProject {
 
     def strOpt(s: String): Option[String] = if (s.trim.isEmpty) None else Some(s)
 
-    if (parsed(4) == "1")
+    if (parsed(4) == "1") {
+      if (parsed(9) == "3") { // completed
+        Some(TmProject(uuid = parsed.head, title = parsed(5), tags = tags.getOrElse(parsed.head, Set.empty).map(_.title) + "done",
+          area = strOpt(areas.get(parsed(15)).map(_.title).getOrElse("")), project = None))
+      } else {
+        Some(TmProject(uuid = parsed.head, title = parsed(5), tags = tags.getOrElse(parsed.head, Set.empty).map(_.title),
+          area = strOpt(areas.get(parsed(15)).map(_.title).getOrElse("")), project = None))
+      }
+    } else if (parsed(4) == "2") // heading
       Some(TmProject(uuid = parsed.head, title = parsed(5), tags = tags.getOrElse(parsed.head, Set.empty).map(_.title),
-        area = strOpt(areas.get(parsed(15)).map(_.title).getOrElse("")), project = None))
-    else if (parsed(4) == "2") // heading
-      Some(TmProject(uuid = parsed.head, title = parsed(5), tags = tags.getOrElse(parsed.head, Set.empty).map(_.title),
-        area = strOpt(areas.get(parsed(15)).map(_.title).getOrElse("")), project = Some(parsed(15))))
+        area = strOpt(areas.get(parsed(15)).map(_.title).getOrElse("")), project = Some(parsed(16))))
     else None
   }
 
@@ -131,6 +136,7 @@ case class TmTask(uuid: String, title: String, notes: String, tags: Set[String],
 object TmTask extends JavaTokenParsers {
 
   val escapes = Map("&amp;" -> "&", "&apos;" -> "'", "&lt;" -> "<", "&gt;" -> ">", "<note xml:space=\"preserve\">" -> "", "</note>" -> "", "\\\\r" -> "")
+
   def parseTask(line: String, areas: Map[String, TmArea]): Seq[String] = {
     // escape any escaped quotes
     val deQuote = line.replaceAll("''", "__QUOTE__")
@@ -174,11 +180,12 @@ object TmTask extends JavaTokenParsers {
 
     def strOpt(s: String): Option[String] = if (s.trim.isEmpty) None else Some(s)
 
-    if (parsed(4) == "0" && parsed(3) == "0" && parsed(9) == "0")   // task and not in the trash and status = 0. no idea what status means todo
+    // parsed(9)/status 3 means 'completed' 2 means 'canceled'. value 1 doesn't appear in my Things, nor any value > 3
+    if (parsed(4) == "0" && parsed(3) == "0" && parsed(9) == "0") // task and not in the trash and status = 0. no idea what status means todo
       Some(TmTask(parsed.head, parsed(5), parsed(6), tags.getOrElse(parsed.head, Set.empty).map(_.title),
         project = strOpt(parsed(16)).orElse(strOpt(parsed(24))),
         area = strOpt(areas.get(parsed(15)).map(_.title).getOrElse("")),
-        dueDate = None,   // todo
+        dueDate = None, // todo
         someday = parsed(11) == "2"))
     else None
   }
@@ -269,16 +276,33 @@ object TmTaskTag extends RegexParsers {
 
 }
 
-object SQL extends App with RegexParsers {
-  val sql = io.Source.fromFile("/Users/ebowman/things.sql").getLines().toStream
-
-
+class Model(sql: Seq[String]) {
   val areaMap: Map[String, TmArea] = TmArea.areaMap(sql)
   val taskToTagMap: Map[String, Set[TmTag]] = TmTaskTag.taskToTags(sql, TmTag.tagMap(sql))
   val projectMap: Map[String, TmProject] = TmProject.projectMap(sql, taskToTagMap, areaMap)
   val tasks: Seq[TmTask] = TmTask.taskMap(sql, taskToTagMap, areaMap)
 
-  tasks.filter(_.title.contains("Overcommitted")).foreach(println)
+  val topLevelTasks = tasks.filter(_.project.isEmpty).filter(_.area.isEmpty).toList
+  val topLevelProjects = projectMap.values.filter(_.area.isEmpty).filter(_.project.isEmpty).toList
+  val tasksPerArea: List[(TmArea, Seq[TmTask])] = areaMap.map { case (uuid, tmArea) =>
+    tmArea -> tasks.filter(task => task.area.contains(tmArea.title)).toList
+  }.toList
+  val projectsPerArea = areaMap.map { case (uuid, tmArea) =>
+    tmArea -> projectMap.values.filter(tmProj => tmProj.area.contains(tmArea.title))
+  }.toList
 
-  val topLevelTasks = tasks.filter(_.project.isEmpty).filter(_.area.isEmpty).foreach(task => println(task.print(0)))
+  val headings = projectMap.values.filter(tmProj => tmProj.project.nonEmpty).toList
+
+  val tasksPerHeading = headings.map { heading =>
+    heading -> tasks.filter(task => task.project.contains(heading.uuid)).toList
+  }
+}
+
+object SQL extends App with RegexParsers {
+  val sql = io.Source.fromFile("/Users/ebowman/things.sql").getLines().toStream
+
+  new Model(sql)
+
+  //tasks.filter(_.title.contains("Overcommitted")).foreach(println)
+
 }
