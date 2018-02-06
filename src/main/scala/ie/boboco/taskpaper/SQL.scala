@@ -1,6 +1,8 @@
 package ie.boboco.taskpaper
 
 import java.sql.Date
+import java.text.SimpleDateFormat
+import java.time.LocalDate
 
 import scala.util.parsing.combinator.{JavaTokenParsers, RegexParsers}
 
@@ -231,6 +233,11 @@ object TmTask extends InsertParser {
       var taskTags = tags.getOrElse(parsed.head, Set.empty).map(_.title)
       if (parsed(11) == "2") taskTags += "someday"
       if (parsed(11) == "1" && project.isEmpty && area.isEmpty) taskTags += "unfiled"
+      if (parsed(7) != "") {    // we have a dueDate
+        val date = new java.util.Date(math.round(parsed(7).toDouble * 1000))
+        val sdf = new SimpleDateFormat("yyyy-MM-dd")
+        taskTags += s"due(${sdf.format(date)})"
+      }
       Some(TmTask(parsed.head, parsed(5), parsed(6),
         taskTags,
         project = project,
