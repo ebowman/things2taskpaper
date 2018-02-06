@@ -9,12 +9,14 @@ Utility to generate [TaskPaper](https://www.taskpaper.com/) files from a Things 
  - [x] Notes formatting
  - [x] Headings - parsing
  - [x] Ordering
- - [ ] Checklists
  - [x] Tasks - printing
  - [x] Headings - printing
  - [x] Areas - printing
  - [x] Projects - printing
- - [ ] Due date support
+ - [x] Due date support
  - [x] Inbox
+ - [ ] Repeating
+ - [ ] Checklists
+
 
 
