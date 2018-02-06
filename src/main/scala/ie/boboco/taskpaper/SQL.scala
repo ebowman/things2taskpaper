@@ -74,7 +74,8 @@ trait Printable {
 case class TmProject(uuid: String, title: String, tags: Set[String], area: Option[String], project: Option[String], index: Int) extends Printable {
   override def printImpl(level: Int, model: Model): String =  {
     val b = new StringBuilder
-    b.append(title).append(": ").append(tags.map(t => "@" + t).mkString(" ")).append("\n")
+    if (tags.nonEmpty) b.append(title).append(": ").append(tags.map(t => "@" + t).mkString(" ")).append("\n")
+    else b.append(title).append(":\n") // a space with no tags breaks the project model when no tags
 
     val myTasks = model.tasks.filter(_.project.contains(uuid))
     myTasks.foreach(task => b.append(task.print(level + 1, model)))
@@ -90,18 +91,21 @@ object TmProject {
 
     def strOpt(s: String): Option[String] = if (s.trim.isEmpty) None else Some(s)
 
-    if (parsed(4) == "1") {
-      if (parsed(9) == "3") { // completed
-        Some(TmProject(uuid = parsed.head, title = parsed(5), tags = tags.getOrElse(parsed.head, Set.empty).map(_.title) + "done",
-          area = strOpt(areas.get(parsed(15)).map(_.title).getOrElse("")), project = None, index = parsed(13).toInt))
-      } else {
+    if (parsed(3) == "1") None    // trashed
+    else {
+      if (parsed(4) == "1") {
+        if (parsed(9) == "3") { // completed
+          Some(TmProject(uuid = parsed.head, title = parsed(5), tags = tags.getOrElse(parsed.head, Set.empty).map(_.title) + "done",
+            area = strOpt(areas.get(parsed(15)).map(_.title).getOrElse("")), project = None, index = parsed(13).toInt))
+        } else {
+          Some(TmProject(uuid = parsed.head, title = parsed(5), tags = tags.getOrElse(parsed.head, Set.empty).map(_.title),
+            area = strOpt(areas.get(parsed(15)).map(_.title).getOrElse("")), project = None, index = parsed(13).toInt))
+        }
+      } else if (parsed(4) == "2") // heading
         Some(TmProject(uuid = parsed.head, title = parsed(5), tags = tags.getOrElse(parsed.head, Set.empty).map(_.title),
-          area = strOpt(areas.get(parsed(15)).map(_.title).getOrElse("")), project = None, index = parsed(13).toInt))
-      }
-    } else if (parsed(4) == "2") // heading
-      Some(TmProject(uuid = parsed.head, title = parsed(5), tags = tags.getOrElse(parsed.head, Set.empty).map(_.title),
-        area = strOpt(areas.get(parsed(15)).map(_.title).getOrElse("")), project = Some(parsed(16)), index = parsed(13).toInt))
-    else None
+          area = strOpt(areas.get(parsed(15)).map(_.title).getOrElse("")), project = Some(parsed(16)), index = parsed(13).toInt))
+      else None
+    }
   }
 
   def projectMap(sql: Seq[String], tags: Map[String, Set[TmTag]], areas: Map[String, TmArea]): Map[String, TmProject] = {
@@ -153,6 +157,7 @@ case class TmTask(uuid: String, title: String, notes: String, tags: Set[String],
     val allTags: Set[String] = if (someday) tags + "someday" else tags
     val printed = "- " + title + " " + allTags.map(t => s"@$t").mkString(" ") + "\n" + formatNote(level + 2)
     printed.lines.filter(_.trim.nonEmpty).mkString("\n") + "\n"
+    //if (printed.isEmpty || printed.endsWith("\n")) printed else printed + "\n"
   }
 
   def formatNote(level: Int): String = {
@@ -202,8 +207,8 @@ object TmTask extends InsertParser {
 
     def strOpt(s: String): Option[String] = if (s.trim.isEmpty) None else Some(s)
 
-    // parsed(9)/status 3 means 'completed' 2 means 'canceled'. value 1 doesn't appear in my Things, nor any value > 3
-    if (parsed(4) == "0" && parsed(3) == "0" && parsed(9) == "0") // task and not in the trash and status = 0. no idea what status means todo
+    // parsed(3) is trashed, parsed(9)/status 3 means 'completed' 2 means 'canceled'. value 1 doesn't appear in my Things, nor any value > 3
+    if (parsed(3) == "0" && parsed(4) == "0" && parsed(3) == "0" && parsed(9) == "0") // task and not in the trash and status = 0. no idea what status means todo
       Some(TmTask(parsed.head, parsed(5), parsed(6), tags.getOrElse(parsed.head, Set.empty).map(_.title),
         project = strOpt(parsed(16)).orElse(strOpt(parsed(24))),
         area = strOpt(areas.get(parsed(15)).map(_.title).getOrElse("")),
