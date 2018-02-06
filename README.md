@@ -11,7 +11,7 @@ unfiled/someday concepts from Things, so they are replicated here.
 You can see what's working now from the Todo list below. Sorry, not much
 documentation, and it's a scala program.
 
-If you're brave enough to try, install sbt and run "sbt run" from the shell. If
+If you're brave enough to try, install [sbt](https://www.scala-sbt.org/) and run "sbt run" from the shell. If
 everything works, you'll end up with a things.taskpaper in the same directory
 as this program.
 
