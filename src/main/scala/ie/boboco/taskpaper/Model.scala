@@ -1,9 +1,6 @@
 package ie.boboco.taskpaper
 
-import java.sql.Date
 import java.text.SimpleDateFormat
-import java.time.LocalDate
-
 import scala.util.parsing.combinator.{JavaTokenParsers, RegexParsers}
 
 /*
@@ -166,7 +163,7 @@ trait InsertParser extends JavaTokenParsers {
 }
 
 case class TmTask(uuid: String, title: String, notes: String, tags: Set[String], project: Option[String],
-                  area: Option[String], dueDate: Option[Date], index: Int) extends Printable {
+                  area: Option[String], index: Int) extends Printable {
   override def printImpl(level: Int, model: Model): String = {
     val printed = if (tags.nonEmpty)
       "- " + title + " " + tags.map(t => s"@$t").mkString(" ") + "\n" + formatNote(level + 2)
@@ -206,14 +203,18 @@ case class TmTask(uuid: String, title: String, notes: String, tags: Set[String],
 
 object TmTask extends InsertParser {
 
-  val escapes = Map("&amp;" -> "&", "&apos;" -> "'", "&lt;" -> "<", "&gt;" -> ">", "<note xml:space=\"preserve\">" -> "", "</note>" -> "", "\\\\r" -> "")
+  val escapes = Map("&amp;" -> "&", "&apos;" -> "'", "&lt;" -> "<", "&gt;" -> ">",
+    "<note xml:space=\"preserve\">" -> "", "</note>" -> "", "\\\\r" -> "")
 
   override val tableName = "TMTask"
 
   def parseTaskSQL(line: String, areas: Map[String, TmArea]): Seq[String] = {
 
     // remove the conversion from "\n" to 0x0d, etc., that sqlite helpfully puts in there. We'll do that ourselves later
-    val replaced = line.replaceAll("replace\\(", "").replaceAll(""",'\\n',char\(10\)\)""", "").replaceAll(""",'\\r',char\(13\)\)""", "")
+    val replaced = line.
+      replaceAll("replace\\(", "").
+      replaceAll(""",'\\n',char\(10\)\)""", "").
+      replaceAll(""",'\\r',char\(13\)\)""", "")
 
     parse(replaced).map(_.replaceAll("__QUOTE__", "'"))
   }
@@ -224,7 +225,8 @@ object TmTask extends InsertParser {
 
     def strOpt(s: String): Option[String] = if (s.trim.isEmpty) None else Some(s)
 
-    // parsed(3) is trashed, parsed(9)/status 3 means 'completed' 2 means 'canceled'. value 1 doesn't appear in my Things, nor any value > 3
+    // parsed(3) is trashed, parsed(9)/status 3 means 'completed' 2 means 'canceled'.
+    // value 1 doesn't appear in my Things, nor any value > 3
     // parsed(11)/start 0 means "inbox"
     if (parsed(3) == "0" && parsed(4) == "0" && parsed(3) == "0" && parsed(9) == "0") {
       // task and not in the trash and status = 0. no idea what status means todo
@@ -232,8 +234,8 @@ object TmTask extends InsertParser {
       val area = strOpt(areas.get(parsed(15)).map(_.title).getOrElse(""))
       var taskTags = tags.getOrElse(parsed.head, Set.empty).map(_.title)
       if (parsed(11) == "2") taskTags += "someday"
-      if (parsed(11) == "1" && project.isEmpty && area.isEmpty) taskTags += "unfiled"
-      if (parsed(7) != "") {    // we have a dueDate
+      if (parsed(11) != "0" && project.isEmpty && area.isEmpty) taskTags += "unfiled"
+      if (parsed(7) != "") { // we have a dueDate
         val date = new java.util.Date(math.round(parsed(7).toDouble * 1000))
         val sdf = new SimpleDateFormat("yyyy-MM-dd")
         taskTags += s"due(${sdf.format(date)})"
@@ -242,7 +244,6 @@ object TmTask extends InsertParser {
         taskTags,
         project = project,
         area = area,
-        dueDate = None, // todo
         index = parsed(13).toInt))
     } else None
   }
@@ -362,7 +363,7 @@ class Model(sql: Seq[String]) {
     heading -> tasks.filter(task => task.project.contains(heading.uuid)).toList.sortBy(_.index)
   }
 
-  def print(): String = {
+  def print: String = {
     val b = new StringBuilder
     topLevelTasks.filterNot(_.tags.contains("someday")).foreach(p => b.append(p.print(0, this)))
     topLevelTasks.filter(_.tags.contains("someday")).foreach(p => b.append(p.print(0, this)))
@@ -371,10 +372,4 @@ class Model(sql: Seq[String]) {
     areas.foreach(a => b.append(a.print(0, this)))
     b.toString()
   }
-}
-
-object SQL extends App with RegexParsers {
-  val sql = io.Source.fromFile("/Users/ebowman/things.sql").getLines().toStream
-
-  println(new Model(sql).print())
 }

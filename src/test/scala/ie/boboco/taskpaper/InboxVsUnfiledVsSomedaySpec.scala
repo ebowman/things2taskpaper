@@ -21,8 +21,7 @@ class InboxVsUnfiledVsSomedaySpec extends FlatSpec with Matchers {
 
     inboxTasks.head.title shouldBe "Call Dorothy"
 
-    println(model.print())
-    model.print() shouldBe
+    model.print shouldBe
       """
         |- OKR: everybody teaches. Set some goals for people teaching in DF (financial acumen) @unfiled
         |- Optimizing for iteration speed @someday @unfiled

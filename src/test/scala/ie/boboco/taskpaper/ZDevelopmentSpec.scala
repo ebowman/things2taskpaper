@@ -40,6 +40,6 @@ class ZDevelopmentSpec extends FlatSpec with Matchers {
     tasksPerHeading.head._2.size shouldBe 1
     tasksPerHeading.head._2.map(_.project).toSet.flatten shouldBe Set(tasksPerHeading.head._1.uuid)
 
-    println(model.print())
+    println(model.print)
   }
 }
