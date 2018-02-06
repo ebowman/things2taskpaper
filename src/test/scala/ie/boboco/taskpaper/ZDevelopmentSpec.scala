@@ -18,9 +18,9 @@ class ZDevelopmentSpec extends FlatSpec with Matchers {
 
     topLevelTasks.size shouldBe 2
     topLevelTasks.map(_.title).toSet shouldBe Set("One-Page PM 30 day trial ", "Optimizing for iteration speed")
-    topLevelTasks.filter(_.someday).map(_.title) shouldBe Seq("Optimizing for iteration speed")
+    topLevelTasks.filter(_.tags.contains("someday")).map(_.title) shouldBe Seq("Optimizing for iteration speed")
 
-    topLevelProjects.map(_.title) shouldBe Seq("Maria Topics")
+    topLevelProjects.map(_.title).toSet shouldBe Set("Maria Topics", "Inbox")
 
     tasksPerArea.size shouldBe 1
     tasksPerArea.head._1.title shouldBe "[Z : Development]"
@@ -39,5 +39,7 @@ class ZDevelopmentSpec extends FlatSpec with Matchers {
     tasksPerHeading.head._1.title shouldBe "Self Improvement"
     tasksPerHeading.head._2.size shouldBe 1
     tasksPerHeading.head._2.map(_.project).toSet.flatten shouldBe Set(tasksPerHeading.head._1.uuid)
+
+    println(model.print())
   }
 }

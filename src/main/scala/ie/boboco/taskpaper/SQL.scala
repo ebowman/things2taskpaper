@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS 'TMTask' (
 08 'dueDateOffset' INTEGER,
 09 'status' INTEGER,
 10 'stopDate' REAL,
-11 'start' INTEGER,       // it seems start = 2 means a "Someday" task
+11 'start' INTEGER,       // it seems start = 2 means a "Someday" task, 0 is inbox, 1 is unfiled (?)
 12 'startDate' REAL,
 13 'index' INTEGER,
 14 'todayIndex' INTEGER,
@@ -41,6 +41,13 @@ CREATE TABLE IF NOT EXISTS 'TMTask' (
 'todayIndexReferenceDate' REAL,
 'nextInstanceStartDate' REAL,
 'dueDateSuppressionDate' REAL);
+
+How we deal with inbox vs unfiled vs someday
+ - We make sure there is an Inbox: project
+ - unfiled just show up in the top
+ - someday show up in the top, with a @someday tag
+ - we sort unfiled followed by someday (todo)
+
 
 Things has kind of a weird model. Areas are different than projects, they can only live at the top level,
  and projects cannot nest. But when mapped to TP, which can nest projects 2 levels deep (I think...), we can
@@ -72,7 +79,7 @@ trait Printable {
 
 
 case class TmProject(uuid: String, title: String, tags: Set[String], area: Option[String], project: Option[String], index: Int) extends Printable {
-  override def printImpl(level: Int, model: Model): String =  {
+  override def printImpl(level: Int, model: Model): String = {
     val b = new StringBuilder
     if (tags.nonEmpty) b.append(title).append(": ").append(tags.map(t => "@" + t).mkString(" ")).append("\n")
     else b.append(title).append(":\n") // a space with no tags breaks the project model when no tags
@@ -85,13 +92,15 @@ case class TmProject(uuid: String, title: String, tags: Set[String], area: Optio
 
 object TmProject {
 
+  val inboxUUID = "f6a82a9a-ec19-4607-b5fa-7619b3a92287"
+
   def toProject(line: String, tags: Map[String, Set[TmTag]], areas: Map[String, TmArea]): Option[TmProject] = {
 
-    val parsed = TmTask.parseTask(line, areas)
+    val parsed = TmTask.parseTaskSQL(line, areas)
 
     def strOpt(s: String): Option[String] = if (s.trim.isEmpty) None else Some(s)
 
-    if (parsed(3) == "1") None    // trashed
+    if (parsed(3) == "1") None // trashed
     else {
       if (parsed(4) == "1") {
         if (parsed(9) == "3") { // completed
@@ -108,13 +117,16 @@ object TmProject {
     }
   }
 
-  def projectMap(sql: Seq[String], tags: Map[String, Set[TmTag]], areas: Map[String, TmArea]): Map[String, TmProject] = {
+  def loadProjects(sql: Seq[String], tags: Map[String, Set[TmTag]], areas: Map[String, TmArea]): Map[String, TmProject] = {
 
-    (for {
+    val projects = (for {
       line <- sql if line.startsWith("INSERT INTO TMTask VALUES")
     } yield {
       toProject(line, tags, areas)
     }).flatten.map(tmp => tmp.uuid -> tmp).toMap
+
+    val inbox = TmProject(inboxUUID, "Inbox", tags = Set.empty, area = None, project = None, index = 0)
+    projects + (inboxUUID -> inbox)
   }
 }
 
@@ -152,10 +164,13 @@ trait InsertParser extends JavaTokenParsers {
 }
 
 case class TmTask(uuid: String, title: String, notes: String, tags: Set[String], project: Option[String],
-                  area: Option[String], dueDate: Option[Date], someday: Boolean, index: Int) extends Printable {
+                  area: Option[String], dueDate: Option[Date], index: Int) extends Printable {
   override def printImpl(level: Int, model: Model): String = {
-    val allTags: Set[String] = if (someday) tags + "someday" else tags
-    val printed = "- " + title + " " + allTags.map(t => s"@$t").mkString(" ") + "\n" + formatNote(level + 2)
+    val printed = if (tags.nonEmpty)
+      "- " + title + " " + tags.map(t => s"@$t").mkString(" ") + "\n" + formatNote(level + 2)
+    else
+      "- " + title + "\n" + formatNote(level + 2)
+
     printed.lines.filter(_.trim.nonEmpty).mkString("\n") + "\n"
     //if (printed.isEmpty || printed.endsWith("\n")) printed else printed + "\n"
   }
@@ -193,7 +208,7 @@ object TmTask extends InsertParser {
 
   override val tableName = "TMTask"
 
-  def parseTask(line: String, areas: Map[String, TmArea]): Seq[String] = {
+  def parseTaskSQL(line: String, areas: Map[String, TmArea]): Seq[String] = {
 
     // remove the conversion from "\n" to 0x0d, etc., that sqlite helpfully puts in there. We'll do that ourselves later
     val replaced = line.replaceAll("replace\\(", "").replaceAll(""",'\\n',char\(10\)\)""", "").replaceAll(""",'\\r',char\(13\)\)""", "")
@@ -201,29 +216,35 @@ object TmTask extends InsertParser {
     parse(replaced).map(_.replaceAll("__QUOTE__", "'"))
   }
 
-  def toTask(line: String, tags: Map[String, Set[TmTag]], areas: Map[String, TmArea]): Option[TmTask] = {
+  def parseTask(line: String, tags: Map[String, Set[TmTag]], areas: Map[String, TmArea]): Option[TmTask] = {
 
-    val parsed = parseTask(line, areas)
+    val parsed = parseTaskSQL(line, areas)
 
     def strOpt(s: String): Option[String] = if (s.trim.isEmpty) None else Some(s)
 
     // parsed(3) is trashed, parsed(9)/status 3 means 'completed' 2 means 'canceled'. value 1 doesn't appear in my Things, nor any value > 3
-    if (parsed(3) == "0" && parsed(4) == "0" && parsed(3) == "0" && parsed(9) == "0") // task and not in the trash and status = 0. no idea what status means todo
-      Some(TmTask(parsed.head, parsed(5), parsed(6), tags.getOrElse(parsed.head, Set.empty).map(_.title),
-        project = strOpt(parsed(16)).orElse(strOpt(parsed(24))),
-        area = strOpt(areas.get(parsed(15)).map(_.title).getOrElse("")),
+    // parsed(11)/start 0 means "inbox"
+    if (parsed(3) == "0" && parsed(4) == "0" && parsed(3) == "0" && parsed(9) == "0") {
+      // task and not in the trash and status = 0. no idea what status means todo
+      val project = if (parsed(11) == "0") Some(TmProject.inboxUUID) else strOpt(parsed(16)).orElse(strOpt(parsed(24)))
+      val area = strOpt(areas.get(parsed(15)).map(_.title).getOrElse(""))
+      var taskTags = tags.getOrElse(parsed.head, Set.empty).map(_.title)
+      if (parsed(11) == "2") taskTags += "someday"
+      if (parsed(11) == "1" && project.isEmpty && area.isEmpty) taskTags += "unfiled"
+      Some(TmTask(parsed.head, parsed(5), parsed(6),
+        taskTags,
+        project = project,
+        area = area,
         dueDate = None, // todo
-        someday = parsed(11) == "2",
         index = parsed(13).toInt))
-    else None
+    } else None
   }
 
-  def taskMap(sql: Seq[String], tags: Map[String, Set[TmTag]], areas: Map[String, TmArea]): Seq[TmTask] = {
-
+  def loadTasks(sql: Seq[String], tags: Map[String, Set[TmTag]], areas: Map[String, TmArea]): Seq[TmTask] = {
     (for {
       line <- sql if line.startsWith("INSERT INTO TMTask VALUES")
     } yield {
-      toTask(line, tags, areas)
+      parseTask(line, tags, areas)
     }).flatten
   }
 }
@@ -315,8 +336,8 @@ object TmTaskTag extends RegexParsers {
 class Model(sql: Seq[String]) {
   val areaMap: Map[String, TmArea] = TmArea.areaMap(sql)
   val taskToTagMap: Map[String, Set[TmTag]] = TmTaskTag.taskToTags(sql, TmTag.tagMap(sql))
-  val projectMap: Map[String, TmProject] = TmProject.projectMap(sql, taskToTagMap, areaMap)
-  val tasks: Seq[TmTask] = TmTask.taskMap(sql, taskToTagMap, areaMap)
+  val projectMap: Map[String, TmProject] = TmProject.loadProjects(sql, taskToTagMap, areaMap)
+  val tasks: Seq[TmTask] = TmTask.loadTasks(sql, taskToTagMap, areaMap)
 
   val topLevelTasks = tasks.filter(_.project.isEmpty).filter(_.area.isEmpty).toList.sortBy(_.index)
   val topLevelProjects = projectMap.values.filter(_.area.isEmpty).filter(_.project.isEmpty).toList.sortBy(_.index)
@@ -336,8 +357,10 @@ class Model(sql: Seq[String]) {
 
   def print(): String = {
     val b = new StringBuilder
-    topLevelTasks.foreach(p => b.append(p.print(0, this)))
-    topLevelProjects.foreach(p => b.append(p.print(0, this)))
+    topLevelTasks.filterNot(_.tags.contains("someday")).foreach(p => b.append(p.print(0, this)))
+    topLevelTasks.filter(_.tags.contains("someday")).foreach(p => b.append(p.print(0, this)))
+    topLevelProjects.filter(_.title == "Inbox").foreach(p => b.append(p.print(0, this)))
+    topLevelProjects.filterNot(_.title == "Inbox").foreach(p => b.append(p.print(0, this)))
     areas.foreach(a => b.append(a.print(0, this)))
     b.toString()
   }
