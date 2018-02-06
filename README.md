@@ -40,7 +40,7 @@ cronjob that can make recurring tasks work.
  - [x] Due date support
  - [x] Inbox
  - [ ] Repeating
- - [ ] Checklists
+ - [x] Checklists
 
 
 

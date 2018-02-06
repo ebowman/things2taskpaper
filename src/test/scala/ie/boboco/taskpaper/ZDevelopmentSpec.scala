@@ -40,6 +40,17 @@ class ZDevelopmentSpec extends FlatSpec with Matchers {
     tasksPerHeading.head._2.size shouldBe 1
     tasksPerHeading.head._2.map(_.project).toSet.flatten shouldBe Set(tasksPerHeading.head._1.uuid)
 
-    println(model.print)
+    model.print shouldBe
+      """
+        |- One-Page PM 30 day trial  @unfiled
+        |- Optimizing for iteration speed @someday @unfiled
+        |Inbox:
+        |Maria Topics:
+        |[Z : Development]:
+        | - Read Linear Horn paper @someday
+        | Development:
+        |   - Five things everyone should know about Unicode 
+        | My Reports' Development Maps: @done
+      """.stripMargin.trim + "\n"
   }
 }

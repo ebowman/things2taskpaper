@@ -76,6 +76,53 @@ trait Printable {
   def indent(str: String, level: Int): String = str.lines.map(line => (" " * level) + line).mkString("\n") + "\n"
 }
 
+/*
+CREATE TABLE IF NOT EXISTS 'TMChecklistItem' ('uuid' TEXT PRIMARY KEY,
+'userModificationDate' REAL, 'creationDate' REAL,'title' TEXT, 'status' INTEGER, 'stopDate' REAL, 'index' INTEGER,
+ 'task' TEXT);
+
+INSERT INTO TMChecklistItem VALUES('79CFDC51-9475-4A2C-8C68-845520ED8873',1495177460.2807950973,1495177460.2779951094,
+'Find Things and add it.',0,NULL,0,'63ADDD11-1003-44D8-AA76-32AD7FA5E02D');
+
+status = 0 normal
+status = 3 done
+ */
+case class TMChecklistItem(uuid: String,
+                           title: String,
+                           status: Int,
+                           index: Int,
+                           taskUuid: String) extends Printable with Ordered[TMChecklistItem] {
+  override def printImpl(level: Int, model: Model): String = {
+    if (status == 0) s"- $title"
+    else s"- $title @done"
+  }
+
+  override def compare(that: TMChecklistItem): Int = index - that.index
+}
+
+object TMChecklistItem extends InsertParser {
+
+  def parseChecklist(line: String): Option[TMChecklistItem] = {
+    val tokens = parse(line)
+    if (tokens(4) != "0" && tokens(4) != "3") None
+    else {
+      Some(TMChecklistItem(uuid = tokens.head, title = tokens(3), status = tokens(4).toInt,
+        index = tokens(6).toInt, taskUuid = tokens(7)))
+    }
+  }
+
+  /** Map task id -> ordered list of checklist items */
+  def loadChecklists(sql: Seq[String]): Map[String, Seq[TMChecklistItem]] = {
+    val items = for {
+      line <- sql if line.startsWith("INSERT INTO TMChecklistItem ")
+      item <- parseChecklist(line)
+    } yield item
+
+    items.toSeq.groupBy(_.taskUuid).mapValues(_.sorted)
+  }
+
+  override val tableName: String = "TMChecklistItem"
+}
 
 case class TmProject(uuid: String, title: String, tags: Set[String], area: Option[String], project: Option[String], index: Int) extends Printable {
   override def printImpl(level: Int, model: Model): String = {
@@ -170,8 +217,15 @@ case class TmTask(uuid: String, title: String, notes: String, tags: Set[String],
     else
       "- " + title + "\n" + formatNote(level + 2)
 
-    printed.lines.filter(_.trim.nonEmpty).mkString("\n") + "\n"
-    //if (printed.isEmpty || printed.endsWith("\n")) printed else printed + "\n"
+    val builder = new StringBuilder
+    builder.append(printed.lines.filter(_.trim.nonEmpty).mkString("\n") + "\n")
+    for {
+      checklistItems <- model.checklistItems.get(uuid)
+      item <- checklistItems
+    } {
+      builder.append(item.print(level + 2, model))
+    }
+    builder.toString()
   }
 
   def formatNote(level: Int): String = {
@@ -362,6 +416,7 @@ class Model(sql: Seq[String]) {
   val tasksPerHeading = headings.map { heading =>
     heading -> tasks.filter(task => task.project.contains(heading.uuid)).toList.sortBy(_.index)
   }
+  val checklistItems = TMChecklistItem.loadChecklists(sql)
 
   def print: String = {
     val b = new StringBuilder
