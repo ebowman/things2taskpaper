@@ -24,8 +24,8 @@ class ZDevelopmentSpec extends FlatSpec with Matchers {
 
     tasksPerArea.size shouldBe 1
     tasksPerArea.head._1.title shouldBe "[Z : Development]"
-    tasksPerArea.head._2.size shouldBe 1
-    tasksPerArea.head._2.head.title shouldBe "Read Linear Horn paper"
+    tasksPerArea.head._2.size shouldBe 2
+    tasksPerArea.head._2.map(_.title).toSet shouldBe Set("Read Linear Horn paper", "Read Linear Horn paper again")
 
     projectsPerArea.size shouldBe 1
     projectsPerArea.head._1.title shouldBe "[Z : Development]"
@@ -48,9 +48,11 @@ class ZDevelopmentSpec extends FlatSpec with Matchers {
         |Maria Topics:
         |[Z : Development]:
         | - Read Linear Horn paper @someday
+        | - Read Linear Horn paper again @someday
         | Development:
         |   - Five things everyone should know about Unicode 
         | My Reports' Development Maps: @done
+        |
       """.stripMargin.trim + "\n"
   }
 }

@@ -24,6 +24,12 @@ hard to collaborate with others.
 Once I'm done here, I hope to write up more about my workflow, and also a
 cronjob that can make recurring tasks work.
 
+To see the code coverage report, run:
+
+    sbt clean coverage test coverageReport
+    
+which will generate a coverage report in `target/scala-2.12/scoverage-report/index.html`
+
 ### Todo
 
  - [x] Tasks - parsing
@@ -41,6 +47,13 @@ cronjob that can make recurring tasks work.
  - [x] Inbox
  - [ ] Repeating
  - [x] Checklists
+
+### Missing tests
+ - [ ] area sorting
+ - [ ] heading sorting
+ - [ ] task sorting under a heading
+ - [ ] due date parsing
+ - [ ] tasks with a tag
 
 
 

@@ -6,3 +6,7 @@ libraryDependencies += "com.github.pathikrit" %% "better-files" % "3.4.0"
 
 libraryDependencies += "org.scalactic" %% "scalactic" % "3.0.4"
 libraryDependencies += "org.scalatest" %% "scalatest" % "3.0.4" % "test"
+
+coverageMinimum := 70
+coverageFailOnMinimum := true
+

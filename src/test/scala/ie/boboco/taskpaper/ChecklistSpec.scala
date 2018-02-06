@@ -14,7 +14,7 @@ class ChecklistSpec extends FlatSpec with Matchers {
     topLevelTasks.map(_.title).toSet shouldBe Set("Checklist sample")
 
     val clItems = model.checklistItems(topLevelTasks.head.uuid)
-    clItems.size shouldBe 3
+    clItems.size shouldBe 4
 
     model.print shouldBe
       """
@@ -22,8 +22,15 @@ class ChecklistSpec extends FlatSpec with Matchers {
         |  - item 1
         |  - item 2
         |  - item 3
+        |  - item 4 @done
         |Inbox:
       """
       .stripMargin.trim + "\n"
+  }
+
+  it should "ignore a checklist with an unknown status" in {
+    val sql = io.Source.fromInputStream(getClass.getClassLoader.getResourceAsStream("ignoreweirdchecklist.sql")).getLines().toStream
+    val model = new Model(sql)
+    model.checklistItems.size shouldBe 0
   }
 }

@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS 'TMTask' (
 06 'notes' TEXT,
 07 'dueDate' REAL,
 08 'dueDateOffset' INTEGER,
-09 'status' INTEGER,
+09 'status' INTEGER,      // 0 ready, 1 completed.
 10 'stopDate' REAL,
 11 'start' INTEGER,       // it seems start = 2 means a "Someday" task, 0 is inbox, 1 is unfiled (?)
 12 'startDate' REAL,
@@ -104,7 +104,11 @@ object TMChecklistItem extends InsertParser {
 
   def parseChecklist(line: String): Option[TMChecklistItem] = {
     val tokens = parse(line)
-    if (tokens(4) != "0" && tokens(4) != "3") None
+    // we only know what status 0 and 3 mean, ignore other values
+    if (tokens(4) != "0" && tokens(4) != "3") {
+      System.err.println(s"Unknown checklist item: $line")
+      None
+    }
     else {
       Some(TMChecklistItem(uuid = tokens.head, title = tokens(3), status = tokens(4).toInt,
         index = tokens(6).toInt, taskUuid = tokens(7)))
@@ -140,7 +144,7 @@ object TmProject {
 
   val inboxUUID = "f6a82a9a-ec19-4607-b5fa-7619b3a92287"
 
-  def toProject(line: String, tags: Map[String, Set[TmTag]], areas: Map[String, TmArea]): Option[TmProject] = {
+  def parseProject(line: String, tags: Map[String, Set[TmTag]], areas: Map[String, TmArea]): Option[TmProject] = {
 
     val parsed = TmTask.parseTaskSQL(line, areas)
 
@@ -157,7 +161,7 @@ object TmProject {
             area = strOpt(areas.get(parsed(15)).map(_.title).getOrElse("")), project = None, index = parsed(13).toInt))
         }
       } else if (parsed(4) == "2") // heading
-        Some(TmProject(uuid = parsed.head, title = parsed(5), tags = tags.getOrElse(parsed.head, Set.empty).map(_.title),
+        Some(TmProject(uuid = parsed.head, title = parsed(5), tags = Set.empty, // a heading can't have tags
           area = strOpt(areas.get(parsed(15)).map(_.title).getOrElse("")), project = Some(parsed(16)), index = parsed(13).toInt))
       else None
     }
@@ -168,7 +172,7 @@ object TmProject {
     val projects = (for {
       line <- sql if line.startsWith("INSERT INTO TMTask VALUES")
     } yield {
-      toProject(line, tags, areas)
+      parseProject(line, tags, areas)
     }).flatten.map(tmp => tmp.uuid -> tmp).toMap
 
     val inbox = TmProject(inboxUUID, "Inbox", tags = Set.empty, area = None, project = None, index = 0)
@@ -229,7 +233,7 @@ case class TmTask(uuid: String, title: String, notes: String, tags: Set[String],
   }
 
   def formatNote(level: Int): String = {
-    var clean = indent(notes.replaceAll("\\\\n", "\n"), level)
+    var clean = notes.replaceAll("\\\\n", "\n")
     for {
       (from, to) <- TmTask.escapes
     } clean = clean.replaceAll(from, to)
@@ -240,14 +244,13 @@ case class TmTask(uuid: String, title: String, notes: String, tags: Set[String],
       val link = clean.substring(start, end + 4)
       clean = clean.replaceAllLiterally(link, processLink(link))
     }
-    clean
+    indent(clean, level)
   }
 
   def processLink(str: String): String = {
-    assert(str.startsWith("<a") && str.endsWith("</a>"), s"Malformed anchor: $str")
     val firstQuote = str.indexOf("\"")
     assert(firstQuote != -1)
-    val lastQuote = str.lastIndexOf("\"")
+    val lastQuote = str.indexOf("\"", firstQuote + 1)
     assert(firstQuote != lastQuote)
     val href = str.substring(firstQuote + 1, lastQuote)
     val label = str.substring(lastQuote + 2, str.length - 4)
@@ -282,8 +285,8 @@ object TmTask extends InsertParser {
     // parsed(3) is trashed, parsed(9)/status 3 means 'completed' 2 means 'canceled'.
     // value 1 doesn't appear in my Things, nor any value > 3
     // parsed(11)/start 0 means "inbox"
-    if (parsed(3) == "0" && parsed(4) == "0" && parsed(3) == "0" && parsed(9) == "0") {
-      // task and not in the trash and status = 0. no idea what status means todo
+    if (parsed(3) == "0" && parsed(4) == "0" /*&& parsed(9) == "0"*/ ) {
+      // task and not in the trash
       val project = if (parsed(11) == "0") Some(TmProject.inboxUUID) else strOpt(parsed(16)).orElse(strOpt(parsed(24)))
       val area = strOpt(areas.get(parsed(15)).map(_.title).getOrElse(""))
       var taskTags = tags.getOrElse(parsed.head, Set.empty).map(_.title)
@@ -329,8 +332,8 @@ object TmTag extends InsertParser {
   def tagMap(sql: Seq[String]): Map[String, TmTag] = (for {
     tag <- sql if tag.startsWith("INSERT INTO TMTag ")
   } yield {
-    val fields = parse(fix(tag))
-    val tmTag = TmTag(fields.head, fields(1).replaceAll(" ", "-"))
+    val fields = parse(tag)
+    val tmTag = TmTag(fields.head, fix(fields(1)).replaceAll(" ", "-"))
     tmTag.uuid -> tmTag
   }).toMap
 }
