@@ -14,5 +14,6 @@ Utility to generate [TaskPaper](https://www.taskpaper.com/) files from a Things 
  - [x] Headings - printing
  - [x] Areas - printing
  - [x] Projects - printing
+ - [ ] Due date support
 
 
