@@ -20,7 +20,7 @@ object Things2TaskPaper extends App {
 
   val home = System.getProperty("user.home")
   val defaultDb = s"$home/Library/Containers/com.culturedcode.ThingsMac/Data/Library/Application\\ Support/Cultured\\ Code/Things/Things.sqlite3"
-  val defaultOutput = "things.sql"
+  val defaultOutput = "things.taskpaper"
   val opts = options(Map("db" -> defaultDb, "out" -> defaultOutput), args.toList)
 
   val tmpFile = JFile.createTempFile(".things2taskpaper", ".sql")
