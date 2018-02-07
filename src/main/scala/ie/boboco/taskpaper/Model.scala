@@ -289,7 +289,7 @@ object TmTask extends InsertParser {
     // parsed(3) is trashed, parsed(9)/status 3 means 'completed' 2 means 'canceled'.
     // value 1 doesn't appear in my Things, nor any value > 3
     // parsed(11)/start 0 means "inbox"
-    if (parsed(3) == "0" && parsed(4) == "0" /*&& parsed(9) == "0"*/ ) {
+    if (parsed(3) == "0" && parsed(4) == "0" ) {
       // task and not in the trash
       val project = if (parsed(11) == "0") Some(TmProject.inboxUUID) else strOpt(parsed(16)).orElse(strOpt(parsed(24)))
       val area = strOpt(areas.get(parsed(15)).map(_.title).getOrElse(""))
@@ -301,6 +301,7 @@ object TmTask extends InsertParser {
         val sdf = new SimpleDateFormat("yyyy-MM-dd")
         taskTags += s"due(${sdf.format(date)})"
       }
+      if (parsed(9) == "3") taskTags += "done"
       Some(TmTask(parsed.head, parsed(5), parsed(6),
         taskTags,
         project = project,
