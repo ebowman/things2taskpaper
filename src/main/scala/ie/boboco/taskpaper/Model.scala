@@ -136,6 +136,10 @@ case class TmProject(uuid: String, title: String, tags: Set[String], area: Optio
 
     val myTasks = model.tasks.filter(_.project.contains(uuid))
     myTasks.foreach(task => b.append(task.print(level + 1, model)))
+
+    val myHeaders = model.headings.filter(_.project.contains(uuid))
+    myHeaders.foreach(header => b.append(header.print(level + 1, model)))
+
     b.toString()
   }
 }

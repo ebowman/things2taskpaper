@@ -16,33 +16,34 @@ class ZDevelopmentSpec extends FlatSpec with Matchers {
 
     import model._
 
-    topLevelTasks.size shouldBe 2
-    topLevelTasks.map(_.title).toSet shouldBe Set("One-Page PM 30 day trial ", "Optimizing for iteration speed")
+    topLevelTasks.size shouldBe 3
+    topLevelTasks.map(_.title).toSet shouldBe Set("One-Page PM 30 day trial ", "Did Jeff get a parking spot?", "Optimizing for iteration speed")
     topLevelTasks.filter(_.tags.contains("someday")).map(_.title) shouldBe Seq("Optimizing for iteration speed")
 
     topLevelProjects.map(_.title).toSet shouldBe Set("Maria Topics", "Inbox")
 
-    tasksPerArea.size shouldBe 1
-    tasksPerArea.head._1.title shouldBe "[Z : Development]"
-    tasksPerArea.head._2.size shouldBe 2
+    tasksPerArea.size shouldBe 2
+    tasksPerArea.map(_._1.title).toSet shouldBe Set("[Z : Development]", "[P]")
+    tasksPerArea.find(_._1.title == "[Z : Development]").map(_._2).get.size shouldBe 2
     tasksPerArea.head._2.map(_.title).toSet shouldBe Set("Read Linear Horn paper", "Read Linear Horn paper again")
 
-    projectsPerArea.size shouldBe 1
-    projectsPerArea.head._1.title shouldBe "[Z : Development]"
-    projectsPerArea.head._2.size shouldBe 2
-    projectsPerArea.head._2.map(_.title).toSet shouldBe Set("Development", "My Reports' Development Maps")
-    projectsPerArea.head._2.map(_.tags).filter(_.nonEmpty) shouldBe Seq(Set("done"))
+    projectsPerArea.size shouldBe 2
+    projectsPerArea.map(_._1.title).toSet shouldBe Set("[Z : Development]", "[P]")
+    projectsPerArea.find(_._1.title == "[Z : Development]").map(_._2).get.size shouldBe 2
+    projectsPerArea.find(_._1.title == "[Z : Development]").get._2.map(_.title).toSet shouldBe Set("Development", "My Reports' Development Maps")
+    projectsPerArea.find(_._1.title == "[Z : Development]").get._2.map(_.tags).filter(_.nonEmpty) shouldBe Seq(Set("done"))
 
-    headings.map(_.title) shouldBe Seq("Self Improvement")
+    headings.map(_.title).toSet shouldBe Set("Self Improvement", "Managing a Team")
 
-    tasksPerHeading.size shouldBe 1
-    tasksPerHeading.head._1.title shouldBe "Self Improvement"
-    tasksPerHeading.head._2.size shouldBe 1
-    tasksPerHeading.head._2.map(_.project).toSet.flatten shouldBe Set(tasksPerHeading.head._1.uuid)
+    tasksPerHeading.size shouldBe 2
+    tasksPerHeading.map(_._1.title).toSet shouldBe Set("Self Improvement", "Managing a Team")
+    tasksPerHeading.find(_._1.title == "Self Improvement").get._2.size shouldBe 2
+    tasksPerHeading.find(_._1.title == "Self Improvement").get._2.map(_.project).toSet.flatten shouldBe Set(tasksPerHeading.head._1.uuid)
 
     model.print shouldBe
       """
         |- One-Page PM 30 day trial  @unfiled
+        |- Did Jeff get a parking spot? @Jeff @unfiled
         |- Optimizing for iteration speed @someday @unfiled
         |Inbox:
         |Maria Topics:
@@ -51,7 +52,13 @@ class ZDevelopmentSpec extends FlatSpec with Matchers {
         | - Read Linear Horn paper again @someday
         | Development:
         |   - Five things everyone should know about Unicode 
+        |   Self Improvement:
+        |      - 10 Ways to Make Peak-State Decisions and Invest in Yourself
+        |           https://medium.com/the-mission/10-ways-to-make-bold-decisions-invest-in-yourself-and-live-on-your-terms-f79d527adcd2
+        |      - Think Time
+        |   Managing a Team:
         | My Reports' Development Maps: @done
+        |[P]:
         |
       """.stripMargin.trim + "\n"
   }

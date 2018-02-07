@@ -49,11 +49,11 @@ which will generate a coverage report in `target/scala-2.12/scoverage-report/ind
  - [x] Checklists
 
 ### Missing tests
- - [ ] area sorting
- - [ ] heading sorting
- - [ ] task sorting under a heading
+ - [x] area sorting
+ - [x] heading sorting
+ - [x] task sorting under a heading
  - [ ] due date parsing
- - [ ] tasks with a tag
+ - [x] tasks with a tag
 
 
 
